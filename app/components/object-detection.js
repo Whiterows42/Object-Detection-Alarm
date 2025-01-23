@@ -3,21 +3,21 @@ import React, { useEffect, useRef, useState } from "react";
 import Webcam from "react-webcam";
 import { load as cocoSSDLoad } from "@tensorflow-models/coco-ssd";
 import * as tf from "@tensorflow/tfjs";
-import throttle from "lodash/throttle"; // Import throttle from lodash
+import throttle from "lodash/throttle";
 
 const ObjectDetection = () => {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
-  const [isClient, setIsClient] = useState(false); // State to track client-side rendering
-  const [isLoading, setIsLoading] = useState(false); // State to track model loading
+  const [isClient, setIsClient] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [facingMode, setFacingMode] = useState("user"); // Default to front camera
   let detectInterval;
 
-  // Function to play song (throttled)
   const playSong = throttle(() => {
-    // const audio = new Audio("/polsaagayi.mp3"); // Replace with the path to your song
-    // audio.play();
+    const audio = new Audio("/polsaagayi.mp3");
+    audio.play();
     console.log("Song played!");
-  }, 2000); // Throttle to play the song once every 5 seconds
+  }, 2000);
 
   async function runObjectDetection(net) {
     if (
@@ -28,22 +28,21 @@ const ObjectDetection = () => {
       canvasRef.current.width = webcamRef.current.video.videoWidth;
       canvasRef.current.height = webcamRef.current.video.videoHeight;
 
-      // Perform object detection using the COCO-SSD model
-      const predictions = await net.detect(webcamRef.current.video, undefined, 0.6);
-
+      const predictions = await net.detect(
+        webcamRef.current.video,
+        undefined,
+        0.6
+      );
       console.log(predictions);
 
-      // Check if a person is detected
       const isPersonDetected = predictions.some(
         (prediction) => prediction.class === "person"
       );
 
-      // Play song if a person is detected
       if (isPersonDetected) {
         playSong();
       }
 
-      // Draw predictions on the canvas
       const ctx = canvasRef.current.getContext("2d");
       ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
       predictions.forEach((prediction) => {
@@ -62,14 +61,6 @@ const ObjectDetection = () => {
     }
   }
 
-  const showVideo = () => {
-    if (webcamRef.current !== null && webcamRef.current.video?.readyState === 4) {
-      const myVideoWidth = webcamRef.current.video.videoWidth;
-      const myVideoHeight = webcamRef.current.video.videoHeight;
-      console.log(`Video dimensions: ${myVideoWidth}x${myVideoHeight}`);
-    }
-  };
-
   const runCoco = async () => {
     setIsLoading(true);
     const net = await cocoSSDLoad();
@@ -80,14 +71,17 @@ const ObjectDetection = () => {
     }, 10);
   };
 
+  const toggleCamera = () => {
+    setFacingMode((prevMode) => (prevMode === "user" ? "environment" : "user"));
+  };
+
   useEffect(() => {
-    setIsClient(true); // Set isClient to true on the client side
+    setIsClient(true);
     runCoco();
-    showVideo();
 
     return () => {
       if (detectInterval) {
-        clearInterval(detectInterval); // Cleanup interval on unmount
+        clearInterval(detectInterval);
       }
     };
   }, []);
@@ -98,16 +92,25 @@ const ObjectDetection = () => {
         <div className="gradient-text text-white">Loading AI Model...</div>
       ) : (
         isClient && (
-          <div className="relative flex justify-center items-center gradient p-1.5 rounded-md">
+          <div className="relative flex flex-col items-center gradient p-1.5 rounded-md">
             <Webcam
               ref={webcamRef}
               className="rounded-md w-full lg:h-[720px]"
               muted
+              videoConstraints={{
+                facingMode: facingMode, // Dynamic facing mode
+              }}
             />
             <canvas
               ref={canvasRef}
               className="absolute top-0 left-0 z-[99999] w-full lg:h-[720px]"
             />
+            <button
+              onClick={toggleCamera}
+              className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-700"
+            >
+              Switch Camera
+            </button>
           </div>
         )
       )}
