@@ -10,80 +10,84 @@ const ObjectDetection = () => {
   const canvasRef = useRef(null);
   const [isClient, setIsClient] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [facingMode, setFacingMode] = useState("user"); // Default to front camera
-  let detectInterval;
+  const [facingMode, setFacingMode] = useState("user");
+  const [audioPlayed, setAudioPlayed] = useState(false); // To debounce audio playback
+  let animationFrameId;
 
+  // Function to play the song (debounced manually)
   const playSong = throttle(() => {
     const audio = new Audio("/polsaagayi.mp3");
     audio.play();
     console.log("Song played!");
   }, 2000);
 
-  async function runObjectDetection(net) {
+
+  // Run object detection
+  const runObjectDetection = async (net) => {
     if (
       canvasRef.current &&
-      webcamRef.current !== null &&
+      webcamRef.current &&
       webcamRef.current.video?.readyState === 4
     ) {
-      canvasRef.current.width = webcamRef.current.video.videoWidth;
-      canvasRef.current.height = webcamRef.current.video.videoHeight;
+      // Match canvas to video dimensions
+      const video = webcamRef.current.video;
+      canvasRef.current.width = video.videoWidth;
+      canvasRef.current.height = video.videoHeight;
 
-      const predictions = await net.detect(
-        webcamRef.current.video,
-        undefined,
-        0.6
-      );
+      // Perform detection
+      const predictions = await net.detect(video);
       console.log(predictions);
 
+      // Check if a person is detected
       const isPersonDetected = predictions.some(
         (prediction) => prediction.class === "person"
       );
+      if (isPersonDetected) playSong();
 
-      if (isPersonDetected) {
-        playSong();
-      }
-
+      // Draw bounding boxes on canvas
       const ctx = canvasRef.current.getContext("2d");
       ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-      predictions.forEach((prediction) => {
-        const [x, y, width, height] = prediction.bbox;
-        ctx.strokeStyle = "#FF0000";
+      predictions.forEach(({ bbox, class: label, score }) => {
+        const [x, y, width, height] = bbox;
+        ctx.strokeStyle = "red";
         ctx.lineWidth = 2;
         ctx.strokeRect(x, y, width, height);
-        ctx.fillStyle = "#FF0000";
-        ctx.font = "12px Arial";
+        ctx.font = "16px Arial";
+        ctx.fillStyle = "red";
         ctx.fillText(
-          `${prediction.class} (${Math.round(prediction.score * 100)}%)`,
+          `${label} (${Math.round(score * 100)}%)`,
           x,
-          y > 10 ? y - 5 : y + 10
+          y > 10 ? y - 5 : y + 15
         );
       });
     }
-  }
+  };
 
-  const runCoco = async () => {
+  // Start object detection with animation frame
+  const startDetection = async () => {
     setIsLoading(true);
     const net = await cocoSSDLoad();
     setIsLoading(false);
 
-    detectInterval = setInterval(() => {
-      runObjectDetection(net);
-    }, 10);
-  };
-
-  const toggleCamera = () => {
-    setFacingMode((prevMode) => (prevMode === "user" ? "environment" : "user"));
-  };
-
-  useEffect(() => {
-    setIsClient(true);
-    runCoco();
-
-    return () => {
-      if (detectInterval) {
-        clearInterval(detectInterval);
-      }
+    const detect = async () => {
+      await runObjectDetection(net);
+      animationFrameId = requestAnimationFrame(detect);
     };
+    detect(); // Start detection loop
+  };
+
+  // Toggle camera between front and back
+  const toggleCamera = () => {
+    setFacingMode((prev) => (prev === "user" ? "environment" : "user"));
+  };
+
+  // Initialize TensorFlow.js backend and start detection
+  useEffect(() => {
+    tf.setBackend("webgl").then(() => console.log("WebGL backend set"));
+    setIsClient(true);
+    startDetection();
+
+    return () => cancelAnimationFrame(animationFrameId); // Cleanup
   }, []);
 
   return (
